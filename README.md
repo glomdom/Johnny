@@ -2,7 +2,7 @@
 
 An experimental pet project about serializing binary data using Source Generators.
 
-<center>:warning: **DISCLAIMER** :warning:</center>
+<p align="center">:warning: **DISCLAIMER** :warning:</p>
 
 The current state of the code really sucks. The source generator is bad and the whole project isn't organized. If you'd like to help out on this issue, create a pull request.
 
