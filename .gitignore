@@ -1,0 +1,7 @@
+/.vs/
+/.idea/
+
+bin/
+obj/
+
+*.DotSettings.user
