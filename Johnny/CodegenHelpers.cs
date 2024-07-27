@@ -2,28 +2,27 @@ using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Johnny;
+namespace Johnny {
+    public static class CodegenHelpers {
+        public static string GetNamespace(SyntaxNode syntaxNode) {
+            var current = syntaxNode.Parent;
 
-public static class CodegenHelpers {
-    public static string GetNamespace(SyntaxNode syntaxNode) {
-        SyntaxNode? current = syntaxNode.Parent;
+            while (current is not (NamespaceDeclarationSyntax or FileScopedNamespaceDeclarationSyntax)) {
+                current = current?.Parent;
+            }
 
-        while (current != null && current is not NamespaceDeclarationSyntax && current is not FileScopedNamespaceDeclarationSyntax) {
-            current = current.Parent;
+            if (current is not BaseNamespaceDeclarationSyntax namespaceDeclaration) {
+                return string.Empty;
+            }
+
+            var namespaceParts = new Stack<string>();
+
+            while (namespaceDeclaration != null) {
+                namespaceParts.Push(namespaceDeclaration.Name.ToString());
+                namespaceDeclaration = namespaceDeclaration.Parent as BaseNamespaceDeclarationSyntax;
+            }
+
+            return string.Join(".", namespaceParts);
         }
-
-        if (current is not BaseNamespaceDeclarationSyntax namespaceDeclaration) {
-            return string.Empty;
-        }
-
-        var namespaceParts = new Stack<string>();
-        namespaceParts.Push(namespaceDeclaration.Name.ToString());
-
-        while (namespaceDeclaration.Parent is BaseNamespaceDeclarationSyntax parentNamespace) {
-            namespaceDeclaration = parentNamespace;
-            namespaceParts.Push(namespaceDeclaration.Name.ToString());
-        }
-
-        return string.Join(".", namespaceParts);
     }
 }

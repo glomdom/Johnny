@@ -24,6 +24,44 @@ public class ReaderTests(ITestOutputHelper outputHelper) {
     }
 
     [Fact]
+    public void Test_NestedStructRead() {
+        byte[] bytes;
+
+        using MemoryStream writerStream = new();
+        using (BinaryWriter writer = new(writerStream)) {
+            writer.Write(0);
+            writer.Write(0);
+            writer.Write(0);
+            writer.Write(1);
+            writer.Write(1);
+            writer.Write(1);
+            writer.Write(32);
+
+            bytes = writerStream.ToArray();
+        }
+
+        using MemoryStream readerStream = new(bytes);
+        using BinaryReader reader = new(readerStream);
+
+        var result = NestedStruct.ReadStruct(reader);
+        var expected = new NestedStruct {
+            Vector = new Vector3 {
+                X = 0,
+                Y = 0,
+                Z = 0,
+            },
+            
+            AnotherVector = new Vector3 {
+                X = 0,
+                Y = 0,
+                Z = 0,
+            },
+            
+            RandomInteger = 32,
+        };
+    }
+
+    [Fact]
     public void Test_PrimitivesRead() {
         byte[] bytes;
 
