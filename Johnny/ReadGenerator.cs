@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -7,10 +8,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
 namespace Johnny;
-
-public struct GeneratorOptions(bool isLittleEndian) {
-    public bool IsLittleEndian { get; } = isLittleEndian;
-}
 
 [Generator]
 public class ReadGenerator : IIncrementalGenerator {
@@ -54,7 +51,12 @@ public class ReadGenerator : IIncrementalGenerator {
         var namespaceName = CodegenHelpers.GetNamespace(structDecl);
         var properties = structDecl.Members
             .OfType<PropertyDeclarationSyntax>()
-            .Select(p => (Type: p.Type.ToString(), Name: p.Identifier.Text))
+            .Select(p => (
+                Type: p.Type.ToString(),
+                Name: p.Identifier.Text,
+                Attributes: p.AttributeLists
+                    .SelectMany(attributesList => attributesList.Attributes
+                        .Where(attribute => attribute.Name.ToString() == "Johnny"))))
             .ToList();
 
         var sourceBuilder = new StringBuilder($@"
@@ -70,16 +72,66 @@ namespace {namespaceName}
 ");
 
         foreach (var property in properties) {
-            sourceBuilder.AppendLine(TypeReaders.TryGetValue(property.Type, out var readMethod)
-                ? $"            result.{property.Name} = reader.{readMethod};"
-                : $"            result.{property.Name} = {property.Type}.ReadStruct(reader);");
+            var foundPrimitiveMethod = TypeReaders.TryGetValue(property.Type, out var readMethod);
+            string method;
+
+            if (foundPrimitiveMethod) {
+                method = $"reader.{readMethod};";
+
+                CodegenHelpers.HandleAttributes(ref method, property.Attributes.ToList());
+                method = $"result.{property.Name} = {method}";
+            } else {
+                method = $"result.{property.Name} = {property.Type}.ReadStruct(reader);";
+            }
+
+            sourceBuilder.AppendLine(method);
         }
 
-        sourceBuilder.AppendLine(@"
+        sourceBuilder.AppendLine($@"
             return result;
-        }
-    }
-}");
+        }}
+
+        private static T ReverseBytes<T>(T value)
+        {{
+            if (typeof(T) == typeof(short) || typeof(T) == typeof(ushort))
+            {{
+                var bytes = BitConverter.GetBytes((dynamic)value);
+                Array.Reverse(bytes);
+                return (T)(dynamic)BitConverter.ToInt16(bytes, 0);
+            }}
+
+            if (typeof(T) == typeof(int) || typeof(T) == typeof(uint))
+            {{
+                var bytes = BitConverter.GetBytes((dynamic)value);
+                Array.Reverse(bytes);
+                return (T)(dynamic)BitConverter.ToInt32(bytes, 0);
+            }}
+
+            if (typeof(T) == typeof(long) || typeof(T) == typeof(ulong))
+            {{
+                var bytes = BitConverter.GetBytes((dynamic)value);
+                Array.Reverse(bytes);
+                return (T)(dynamic)BitConverter.ToInt64(bytes, 0);
+            }}
+
+            if (typeof(T) == typeof(float))
+            {{
+                var bytes = BitConverter.GetBytes((dynamic)value);
+                Array.Reverse(bytes);
+                return (T)(dynamic)BitConverter.ToSingle(bytes, 0);
+            }}
+
+            if (typeof(T) == typeof(double))
+            {{
+                var bytes = BitConverter.GetBytes((dynamic)value);
+                Array.Reverse(bytes);
+                return (T)(dynamic)BitConverter.ToDouble(bytes, 0);
+            }}
+
+            throw new NotSupportedException($""Type {{typeof(T)}} not supported for byte reversal"");
+        }}
+    }}
+}}");
 
         context.AddSource($"Johnny_{structName}_Reader.g.cs", SourceText.From(sourceBuilder.ToString(), Encoding.UTF8));
     }

@@ -50,16 +50,16 @@ public class ReaderTests(ITestOutputHelper outputHelper) {
                 Y = 0,
                 Z = 0,
             },
-            
+
             AnotherVector = new Vector3 {
                 X = 1,
                 Y = 1,
                 Z = 1,
             },
-            
+
             RandomInteger = 32,
         };
-        
+
         Assert.Equal(expected, result);
     }
 
@@ -107,5 +107,27 @@ public class ReaderTests(ITestOutputHelper outputHelper) {
         };
 
         Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void Test_EndiannessRead() {
+        byte[] bytes;
+
+        using MemoryStream writerStream = new();
+        using (BinaryWriter writer = new(writerStream)) {
+            writer.Write(0x1234);
+
+            bytes = writerStream.ToArray();
+        }
+        
+        using MemoryStream readerStream = new(bytes);
+        using BinaryReader reader = new(readerStream);
+
+        var result = StructEndianness.ReadStruct(reader);
+        var expected = new StructEndianness {
+            Integer = 0x3412,
+        };
+        
+        Assert.Equal(expected.Integer, result.Integer);
     }
 }
