@@ -18,9 +18,15 @@ public static class CodegenHelpers {
 
         var namespaceParts = new Stack<string>();
 
-        while (namespaceDeclaration != null) {
+        while (true) {
             namespaceParts.Push(namespaceDeclaration.Name.ToString());
-            namespaceDeclaration = namespaceDeclaration.Parent as BaseNamespaceDeclarationSyntax;
+            
+            var parent = namespaceDeclaration.Parent as BaseNamespaceDeclarationSyntax;
+            if (parent == null) {
+                break;
+            }
+
+            namespaceDeclaration = parent;
         }
 
         return string.Join(".", namespaceParts);
