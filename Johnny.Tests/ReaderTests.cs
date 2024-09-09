@@ -52,13 +52,15 @@ public class ReaderTests(ITestOutputHelper outputHelper) {
             },
             
             AnotherVector = new Vector3 {
-                X = 0,
-                Y = 0,
-                Z = 0,
+                X = 1,
+                Y = 1,
+                Z = 1,
             },
             
             RandomInteger = 32,
         };
+        
+        Assert.Equal(expected, result);
     }
 
     [Fact]
