@@ -28,8 +28,10 @@ public class ReadGenerator : IIncrementalGenerator {
     };
 
     public void Initialize(IncrementalGeneratorInitializationContext context) {
-        context.RegisterPostInitializationOutput(ctx =>
-            ctx.AddSource("JohnnyAttribute.g.cs", Data.Attribute.Source));
+        context.RegisterPostInitializationOutput(
+            ctx =>
+                ctx.AddSource("JohnnyAttribute.g.cs", Data.Attribute.Source)
+        );
 
         var structDeclarations = context.SyntaxProvider
             .CreateSyntaxProvider(SyntaxHelpers.IsStructWithJohnnyAttribute, SyntaxHelpers.GetStructWithJohnnyAttribute)
@@ -49,90 +51,70 @@ public class ReadGenerator : IIncrementalGenerator {
     private static void GenerateReadMethodForStruct(StructDeclarationSyntax structDecl, SourceProductionContext context) {
         var structName = structDecl.Identifier.Text;
         var namespaceName = CodegenHelpers.GetNamespace(structDecl);
-        var properties = structDecl.Members
-            .OfType<PropertyDeclarationSyntax>()
-            .Select(p => (
-                Type: p.Type.ToString(),
-                Name: p.Identifier.Text,
-                Attributes: p.AttributeLists
-                    .SelectMany(attributesList => attributesList.Attributes
-                        .Where(attribute => attribute.Name.ToString() == "Johnny"))))
-            .ToList();
+        var properties = GetStructProperties(structDecl);
 
-        var sourceBuilder = new StringBuilder($@"
-using System.IO;
-
-namespace {namespaceName}
-{{
-    public partial struct {structName}
-    {{
-        public static {structName} ReadStruct(BinaryReader reader)
-        {{
-            var result = new {structName}();
-");
+        var sb = new StringBuilder();
+        sb.AppendLine("using System.IO;");
+        sb.AppendLine();
+        sb.AppendLine($"namespace {namespaceName} {{");
+        sb.AppendLine($"\tpublic partial struct {structName} {{");
+        sb.AppendLine($"\t\tpublic static {structName} ReadStruct(BinaryReader reader) {{");
+        sb.AppendLine($"\t\t\tvar result = new {structName}();");
 
         foreach (var property in properties) {
-            var foundPrimitiveMethod = TypeReaders.TryGetValue(property.Type, out var readMethod);
-            string method;
-
-            if (foundPrimitiveMethod) {
-                method = $"reader.{readMethod};";
-
-                CodegenHelpers.HandleAttributes(ref method, property.Attributes.ToList());
-                method = $"result.{property.Name} = {method}";
-            } else {
-                method = $"result.{property.Name} = {property.Type}.ReadStruct(reader);";
-            }
-
-            sourceBuilder.AppendLine(method);
+            var readStatement = GenerateReadStatement(property);
+            sb.AppendLine(readStatement);
         }
 
-        sourceBuilder.AppendLine($@"
-            return result;
-        }}
+        sb.AppendLine("\t\t\treturn result;");
+        sb.AppendLine("\t\t}");
+        sb.AppendLine();
+        sb.Append(GenerateReverseBytesMethod());
+        sb.AppendLine("\t}");
+        sb.AppendLine("}");
 
-        private static T ReverseBytes<T>(T value)
-        {{
-            if (typeof(T) == typeof(short) || typeof(T) == typeof(ushort))
-            {{
-                var bytes = BitConverter.GetBytes((dynamic)value);
-                Array.Reverse(bytes);
-                return (T)(dynamic)BitConverter.ToInt16(bytes, 0);
-            }}
+        context.AddSource($"Johnny_{structName}_Reader.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8));
+    }
 
-            if (typeof(T) == typeof(int) || typeof(T) == typeof(uint))
-            {{
-                var bytes = BitConverter.GetBytes((dynamic)value);
-                Array.Reverse(bytes);
-                return (T)(dynamic)BitConverter.ToInt32(bytes, 0);
-            }}
+    private static IEnumerable<(string Type, string Name, List<AttributeSyntax> Attributes)> GetStructProperties(StructDeclarationSyntax structDecl) {
+        return structDecl.Members
+            .OfType<PropertyDeclarationSyntax>()
+            .Select(
+                p => (
+                    Type: p.Type.ToString(),
+                    Name: p.Identifier.Text,
+                    Attributes: p.AttributeLists.SelectMany(a => a.Attributes).ToList()
+                )
+            );
+    }
 
-            if (typeof(T) == typeof(long) || typeof(T) == typeof(ulong))
-            {{
-                var bytes = BitConverter.GetBytes((dynamic)value);
-                Array.Reverse(bytes);
-                return (T)(dynamic)BitConverter.ToInt64(bytes, 0);
-            }}
+    private static string GenerateReadStatement((string Type, string Name, List<AttributeSyntax> Attributes) property) {
+        if (!TypeReaders.TryGetValue(property.Type, out var readMethod)) {
+            return $"\t\t\tresult.{property.Name} = {property.Type}.ReadStruct(reader);";
+        }
 
-            if (typeof(T) == typeof(float))
-            {{
-                var bytes = BitConverter.GetBytes((dynamic)value);
-                Array.Reverse(bytes);
-                return (T)(dynamic)BitConverter.ToSingle(bytes, 0);
-            }}
+        var method = $"reader.{readMethod};";
+        CodegenHelpers.HandleAttributes(ref method, property.Attributes);
 
-            if (typeof(T) == typeof(double))
-            {{
-                var bytes = BitConverter.GetBytes((dynamic)value);
-                Array.Reverse(bytes);
-                return (T)(dynamic)BitConverter.ToDouble(bytes, 0);
-            }}
+        return $"\t\t\tresult.{property.Name} = {method}";
+    }
 
-            throw new NotSupportedException($""Type {{typeof(T)}} not supported for byte reversal"");
-        }}
-    }}
-}}");
+    private static string GenerateReverseBytesMethod() {
+        var sb = new StringBuilder();
+        sb.AppendLine("\t\tprivate static T ReverseBytes<T>(T value) {");
+        sb.AppendLine("\t\t\tvar bytes = BitConverter.GetBytes((dynamic)value);");
+        sb.AppendLine("\t\t\tArray.Reverse(bytes);");
+        sb.AppendLine();
+        sb.AppendLine("\t\t\treturn typeof(T) switch {");
+        sb.AppendLine("\t\t\t\tType t when t == typeof(short) || t == typeof(ushort) => (T)(dynamic)BitConverter.ToInt16(bytes, 0),");
+        sb.AppendLine("\t\t\t\tType t when t == typeof(int) || t == typeof(uint) => (T)(dynamic)BitConverter.ToInt32(bytes, 0),");
+        sb.AppendLine("\t\t\t\tType t when t == typeof(long) || t == typeof(ulong) => (T)(dynamic)BitConverter.ToInt64(bytes, 0),");
+        sb.AppendLine("\t\t\t\tType t when t == typeof(float) => (T)(dynamic)BitConverter.ToSingle(bytes, 0),");
+        sb.AppendLine("\t\t\t\tType t when t == typeof(double) => (T)(dynamic)BitConverter.ToDouble(bytes, 0),");
+        sb.AppendLine("\t\t\t\t" + """_ => throw new NotSupportedException($"Type {typeof(T)} not supported for byte reversing.")""");
+        sb.AppendLine("\t\t\t};");
+        sb.AppendLine("\t\t}");
 
-        context.AddSource($"Johnny_{structName}_Reader.g.cs", SourceText.From(sourceBuilder.ToString(), Encoding.UTF8));
+        return sb.ToString();
     }
 }
