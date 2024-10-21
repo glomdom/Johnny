@@ -115,7 +115,8 @@ public class ReaderTests(ITestOutputHelper outputHelper) {
 
         using MemoryStream writerStream = new();
         using (BinaryWriter writer = new(writerStream)) {
-            writer.Write(0x1234);
+            writer.Write((short)0x1234);
+            writer.Write((short)0x5678);
 
             bytes = writerStream.ToArray();
         }
@@ -125,9 +126,11 @@ public class ReaderTests(ITestOutputHelper outputHelper) {
 
         var result = StructEndianness.ReadStruct(reader);
         var expected = new StructEndianness {
-            Integer = 0x3412,
+            LittleEndianInteger = 0x3412,
+            BigEndianInteger = 0x5678,
         };
         
-        Assert.Equal(expected.Integer, result.Integer);
+        Assert.Equal(expected.LittleEndianInteger, result.LittleEndianInteger);
+        Assert.Equal(expected.BigEndianInteger, result.BigEndianInteger);
     }
 }
